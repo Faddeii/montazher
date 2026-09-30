@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+# Классическое скачивание пишет файл модели постепенно — так видно прогресс (Xet пишет только в конце)
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 DATA_DIR = Path(os.getenv("DATA_DIR", ROOT / "data"))
 JOBS_DIR = DATA_DIR / "jobs"

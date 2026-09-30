@@ -38,23 +38,43 @@ def job_dir(job_id: str) -> Path:
     return d
 
 
+# В Windows файл нельзя заменить, пока его кто-то читает (страница опрашивает статус каждую секунду,
+# антивирус проверяет новые файлы) — тогда «Отказано в доступе». Поэтому чтение и запись повторяем.
+RETRIES, RETRY_DELAY = 100, 0.05
+
+
 def read_json(path: Path, default=None):
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return default
+    for attempt in range(RETRIES):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return default
+        except (PermissionError, json.JSONDecodeError):
+            if attempt == RETRIES - 1:
+                raise
+            time.sleep(RETRY_DELAY)
 
 
 def write_json(path: Path, data) -> None:
-    tmp = path.with_suffix(".tmp")
+    tmp = path.with_name(f"{path.stem}.{uuid.uuid4().hex[:8]}.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(path)
+    for attempt in range(RETRIES):
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError:
+            if attempt == RETRIES - 1:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(RETRY_DELAY)
 
 
 def update_job(job_id: str, **fields) -> dict:
     with _lock:
         path = JOBS_DIR / job_id / "job.json"
         job = read_json(path)
+        if "stage" in fields and fields["stage"] != job.get("stage"):
+            job["stage_started"] = time.time()  # чтобы страница показывала, сколько идёт этап
         for k, v in fields.items():
             if isinstance(v, dict) and isinstance(job.get(k), dict):
                 job[k].update(v)
@@ -106,10 +126,15 @@ def run_pipeline(job_id: str) -> None:
 
 
 def run_transcribe(job_id: str) -> None:
-    from .transcribe import transcribe  # тяжёлый импорт (CUDA) — только когда нужен
+    from .model_store import ensure_model, model_ready
+    from .transcribe import model_device, transcribe  # тяжёлый импорт (CUDA) — только когда нужен
 
     d = JOBS_DIR / job_id
+    if not model_ready():  # первый запуск: модель ≈1,6 ГБ, показываем прогресс скачивания
+        update_job(job_id, stage="model", progress=0)
+        ensure_model(throttled(job_id, "model"))
     update_job(job_id, stage="transcribe", progress=0)
+    update_job(job_id, device=model_device())
     audio = media.load_wav_16k(d / "audio.wav")
     write_json(d / "transcript_raw.json", transcribe(audio, throttled(job_id, "transcribe")))
 

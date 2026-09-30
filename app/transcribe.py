@@ -53,7 +53,30 @@ def get_model() -> WhisperModel:
         return _model
 
 
+def model_device() -> str:
+    return get_model().model.device
+
+
+def switch_to_cpu(reason: Exception) -> None:
+    """Видеокарта есть, но работать с ней не получилось (старый драйвер, нет библиотек CUDA) —
+    продолжаем на процессоре, а не падаем."""
+    global _model
+    print(f"[whisper] ошибка видеокарты ({reason}), переключаюсь на процессор")
+    with _model_lock:
+        _model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
+
+
 def transcribe(audio: np.ndarray, on_progress: Callable[[float], None]) -> dict:
+    try:
+        return _transcribe(audio, on_progress)
+    except RuntimeError as e:
+        if model_device() != "cuda":
+            raise
+        switch_to_cpu(e)
+        return _transcribe(audio, on_progress)
+
+
+def _transcribe(audio: np.ndarray, on_progress: Callable[[float], None]) -> dict:
     duration = len(audio) / 16000
     segments, _ = get_model().transcribe(
         audio,

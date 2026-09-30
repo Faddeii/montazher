@@ -129,17 +129,43 @@ function upload(file) {
 const STAGES = [
   { key: "upload", name: "Загрузка файла" },
   { key: "prepare", name: "Подготовка звука", sub: ["queued", "probe", "audio", "proxy"] },
+  { key: "model", name: "Скачивание модели распознавания" },
   { key: "transcribe", name: "Распознавание речи" },
   { key: "analyze", name: "Поиск мычания, пауз и дублей", sub: ["acoustic"] },
 ];
 
-function drawStages(current, progress) {
+const fmtSec = (t) => (t < 60 ? `${Math.round(t)} с` : `${Math.floor(t / 60)} мин ${String(Math.round(t % 60)).padStart(2, "0")} с`);
+
+// Подсказка под активным этапом: что происходит и сколько примерно ждать
+function stageHint(stage, job, elapsed, progress) {
+  const left = progress > 0.05 && progress < 1 ? ` · осталось ≈${fmtSec((elapsed * (1 - progress)) / progress)}` : "";
+  if (stage === "queued" && elapsed > 3) return "Ждёт очереди: сейчас обрабатывается другой файл.";
+  if (stage === "model") return `Только при первом запуске: модель ≈1,6 ГБ, скорость зависит от интернета${left}.`;
+  if (stage === "transcribe") {
+    const dev = job && job.device === "cpu"
+      ? "Видеокарта NVIDIA не найдена — распознавание на процессоре, это медленнее (примерно четверть длины видео)."
+      : "Распознавание на видеокарте.";
+    return `${dev}${left}`;
+  }
+  if (stage === "proxy") return `Готовлю копию для просмотра в браузере${left}.`;
+  if (stage === "acoustic") return "Ищу мычание по звуку.";
+  return "";
+}
+
+let stageKey = null, stageStart = 0;
+function drawStages(current, progress, job) {
+  if (current !== stageKey) { stageKey = current; stageStart = Date.now(); }
+  if (job && job.stage_started && job.stage === current) stageStart = job.stage_started * 1000;
+  const elapsed = (Date.now() - stageStart) / 1000;
   const idx = STAGES.findIndex((s) => s.key === current || (s.sub || []).includes(current));
   $("stages").innerHTML = STAGES.map((s, i) => {
     const state = i < idx ? "done" : i === idx ? "active" : "";
-    const pct = i === idx && progress > 0 ? `${Math.round(progress * 100)}%` : "";
-    const bar = i === idx && progress > 0 ? `<div class="bar"><i style="width:${progress * 100}%"></i></div>` : "";
-    return `<li class="stage ${state}"><span class="dot"></span><span>${s.name}</span><span class="pct">${pct}</span>${bar}</li>`;
+    const active = i === idx;
+    const pct = active && progress > 0 ? `${Math.round(progress * 100)}%` : active ? fmtSec(elapsed) : "";
+    const bar = active && progress > 0 ? `<div class="bar"><i style="width:${progress * 100}%"></i></div>` : "";
+    const hint = active ? stageHint(current, job, elapsed, progress) : "";
+    return `<li class="stage ${state}"><span class="dot"></span><span>${s.name}</span><span class="pct">${pct}</span>${bar}` +
+      (hint ? `<div class="stage-hint">${hint}</div>` : "") + "</li>";
   }).join("");
 }
 
@@ -157,11 +183,22 @@ async function openJob(id) {
   $("view-progress").hidden = false;
   $("progress-name").textContent = job.name;
   $("progress-error").hidden = true;
+  let failures = 0;
   const tick = async () => {
-    try { job = await api(`/api/jobs/${id}`); } catch { return; }
+    try {
+      job = await api(`/api/jobs/${id}`);
+      failures = 0;
+      $("progress-error").hidden = true;
+    } catch {
+      if (++failures >= 3) {
+        showError("Программа не отвечает. Посмотрите в чёрное окно Монтажёра — если оно закрылось или там ошибка, " +
+          "запустите start.bat заново: обработка продолжится с того же места.");
+      }
+      return;
+    }
     if (job.status === "ready") { clearInterval(pollTimer); $("view-progress").hidden = true; editor.open(id); return; }
-    const stage = job.stage === "proxy" ? "prepare" : job.stage;
-    drawStages(stage, job.progress);
+    const stage = job.stage === "proxy" ? "proxy" : job.stage;
+    drawStages(stage, job.progress, job);
     if (job.status === "error") { clearInterval(pollTimer); showError(job.error); }
   };
   tick();
