@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Монтажёр</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%237c9cff'/><path d='M9 10l6 6-6 6M17 22h7' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="#/" class="logo"><span class="logo-mark">✂</span> Монтажёр</a>
+    <div id="job-title" class="job-title"></div>
+    <a href="#/" id="new-btn" class="btn ghost">+ Новый файл</a>
+  </header>
+
+  <!-- Главная: загрузка и список -->
+  <main id="view-home" class="view">
+    <section class="home">
+      <label id="drop" class="drop">
+        <input id="file-input" type="file" accept="video/*,audio/*" hidden>
+        <div class="drop-icon">⬆</div>
+        <div class="drop-title">Перетащите видео сюда</div>
+        <div class="drop-sub">или нажмите, чтобы выбрать файл · MP4, MOV, MKV, аудио</div>
+      </label>
+      <div id="claude-note" class="note warn" hidden>
+        Claude не подключён: добавьте <code>ANTHROPIC_API_KEY</code> в файл <code>.env</code> и перезапустите сервис.
+        Без него убираются только паузы и мычание, а дубли и оговорки не ищутся.
+      </div>
+      <h2 class="section-title">Файлы</h2>
+      <div id="jobs" class="jobs"></div>
+    </section>
+  </main>
+
+  <!-- Обработка -->
+  <main id="view-progress" class="view" hidden>
+    <section class="progress-card">
+      <h2 id="progress-name"></h2>
+      <ol id="stages" class="stages"></ol>
+      <div id="progress-error" class="note error" hidden></div>
+    </section>
+  </main>
+
+  <!-- Редактор -->
+  <main id="view-editor" class="view editor" hidden>
+    <aside class="side">
+      <div class="player-wrap">
+        <video id="video" preload="auto" playsinline></video>
+      </div>
+      <div class="transport">
+        <button id="play" class="btn icon" title="Пробел">▶</button>
+        <span id="time" class="time">0:00 / 0:00</span>
+        <label class="switch" title="Во время воспроизведения перескакивать вырезанные места">
+          <input id="preview" type="checkbox" checked><span></span> Просмотр с вырезами
+        </label>
+      </div>
+
+      <div class="stats">
+        <div><span class="stat-label">Было</span><span id="st-before" class="stat-val">—</span></div>
+        <div><span class="stat-label">Станет</span><span id="st-after" class="stat-val">—</span></div>
+        <div><span class="stat-label">Вырезано</span><span id="st-saved" class="stat-val accent">—</span></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Что вырезать</div>
+        <div id="cats" class="cats"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Настройки пауз</div>
+        <label class="range">
+          <span>Сокращать паузы длиннее <b id="v-maxpause"></b></span>
+          <input id="maxpause" type="range" min="0.2" max="2" step="0.05">
+        </label>
+        <label class="range">
+          <span>Запас вокруг слов <b id="v-pad"></b></span>
+          <input id="pad" type="range" min="0.03" max="0.4" step="0.01">
+        </label>
+      </div>
+
+      <div id="claude-warning" class="note warn" hidden>
+        <span id="claude-warning-text"></span>
+        <button id="reanalyze" class="btn small">Повторить анализ</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Результат</div>
+        <button id="capcut" class="btn wide" hidden>✂ Отправить в CapCut (нарезкой)</button>
+        <div id="capcut-status" class="capcut-status"></div>
+        <button id="render" class="btn primary wide">Смонтировать MP4</button>
+        <div id="render-status" class="render-status"></div>
+        <div id="downloads" class="downloads"></div>
+      </div>
+    </aside>
+
+    <section class="main">
+      <div class="main-head">
+        <div class="legend">
+          <span class="lg t-filler">мычание</span>
+          <span class="lg t-parasite">паразиты</span>
+          <span class="lg t-stumble">оговорки</span>
+          <span class="lg t-retake">дубли</span>
+          <span class="lg t-profanity">мат</span>
+          <span class="lg t-manual">вручную</span>
+        </div>
+        <div class="hint"><b>Клик по слову</b> — вырезать / вернуть · выделите мышью, чтобы вырезать фразу целиком · <b>Ctrl+клик</b> — перейти к месту в видео · клик по паузе — вкл/выкл</div>
+      </div>
+      <div id="issues" class="issues"></div>
+      <div id="transcript" class="transcript"></div>
+    </section>
+  </main>
+
+  <div id="sel-bar" class="sel-bar" hidden>
+    <button data-act="cut" class="btn small danger">Вырезать <kbd>Del</kbd></button>
+    <button data-act="keep" class="btn small">Оставить</button>
+    <button data-act="reset" class="btn small ghost">Как было</button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

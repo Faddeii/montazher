@@ -1,0 +1,3 @@
+# Библиотеки CUDA для распознавания на видеокарте NVIDIA
+nvidia-cublas-cu12
+nvidia-cudnn-cu12>=9,<10
